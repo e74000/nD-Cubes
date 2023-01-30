@@ -1,92 +1,61 @@
 package main
 
 import (
-	"errors"
+	"fmt"
+	"gonum.org/v1/gonum/mat"
 	"math"
+	"math/bits"
 	"math/rand"
 )
 
-var (
-	dimensionError         = errors.New("invalid dimensionality")
-	rotationParameterError = errors.New("incorrect number of rotation parameters for given dimensionality")
-)
-
-func randNNorm(n int) []float64 {
-	norm := make([]float64, n)
-
-	var mag float64
+func randUnit(n int, l float64) *mat.VecDense {
+	norm := mat.NewVecDense(n, nil)
 
 	for i := 0; i < n; i++ {
-		norm[i] = rand.Float64()*2 - 1
-		mag += norm[i] * norm[i]
+		norm.SetVec(i, rand.Float64())
 	}
 
-	mag = math.Sqrt(mag)
+	norm.ScaleVec(l/math.Sqrt(mat.Dot(norm, norm)), norm)
 
-	if mag == 0 {
-		return randNNorm(n)
-	}
+	return norm
+}
 
-	for i := 0; i < n; i++ {
-		norm[i] /= mag
+func randAxis(n int, l float64) *mat.VecDense {
+	norm := mat.NewVecDense(n, nil)
+
+	if rand.Int()%2 == 0 {
+		norm.SetVec(rand.Int()%n, -l)
+	} else {
+		norm.SetVec(rand.Int()%n, l)
 	}
 
 	return norm
 }
 
-func randNOne(n int) []float64 {
-	r := make([]float64, n)
-
-	i := rand.Int() % n
-
-	if rand.Int()%2 == 1 {
-		r[i] = -1
-	} else {
-		r[i] = 1
-	}
-
-	return r
+type nCube struct {
+	points *mat.Dense
+	edges  *mat.Dense
 }
 
-func makeNCube(dim int) map[uint]point {
-	points := make(map[uint]point)
-
-	for i := 0; i < 1<<dim; i++ {
-		pos := make(vec, dim)
-		edges := make([]uint, dim)
-
-		for j := 0; j < dim; j++ {
-			pos[j] = float64(((i>>j)&1)*2 - 1)
-			edges[j] = uint(i) ^ (1 << uint(dim-j-1))
-		}
-
-		points[uint(i)] = point{
-			pos:   pos,
-			id:    uint(i),
-			edges: edges,
-			value: make([]float64, dim),
-		}
+func makeNCube(dim int) *nCube {
+	c := &nCube{
+		points: mat.NewDense(dim, 1<<dim, nil),
+		edges:  mat.NewDense(1<<dim, 1<<dim, nil),
 	}
 
-	for i := 0; i < 1<<dim; i++ {
-		p1 := points[uint(i)].pos
+	c.points.Apply(func(i, j int, v float64) float64 {
+		return float64(((j>>i)&1)*2 - 1)
+	}, c.points)
 
-		for j := 0; j < dim; j++ {
-			p2 := points[points[uint(i)].edges[j]].pos
-
-			var p uint
-
-			for k := 0; k < dim; k++ {
-				p |= (uint((p1[k]+1)/2) | uint((p2[k]+1)/2)) << k
-			}
-
-			v := float64(p) / float64(int(1<<dim))
-
-			points[uint(i)].value[j] = v
+	c.edges.Apply(func(i, j int, v float64) float64 {
+		if bits.OnesCount(uint(i^j)) == 1 && i > j {
+			return 1
 		}
-	}
 
-	return points
+		return 0
+	}, c.edges)
+
+	return c
 }
 
 func nCr(n int, r int) int {
@@ -104,21 +73,24 @@ func nCr(n int, r int) int {
 	return num / den
 }
 
-func newIdent(n int) mat {
-	m := make(mat, n)
+func newIdent(n int) *mat.Dense {
+	m := mat.NewDense(n, n, nil)
 
-	for i := 0; i < n; i++ {
-		m[i] = make([]float64, n)
-		m[i][i] = 1
-	}
+	m.Apply(func(i, j int, v float64) float64 {
+		if i == j {
+			return 1
+		} else {
+			return 0
+		}
+	}, m)
 
 	return m
 }
 
-func givenMats(dim int) []mat {
+func givenMats(dim int) []*mat.Dense {
 	n := nCr(dim, 2)
 
-	mats := make([]mat, n)
+	mats := make([]*mat.Dense, n)
 
 	for i := 0; i < n; i++ {
 		mats[i] = newIdent(dim)
@@ -132,14 +104,29 @@ func givenMats(dim int) []mat {
 				continue
 			}
 
-			mats[count][i][i] = -1
-			mats[count][j][j] = -1
-			mats[count][i][j] = 2
-			mats[count][j][i] = -2
+			mats[count].Set(i, i, -1)
+			mats[count].Set(j, j, -1)
+			mats[count].Set(i, j, 2)
+			mats[count].Set(j, i, -2)
 
 			count++
 		}
 	}
 
 	return mats
+}
+
+func vecString(v *mat.VecDense) string {
+	s := "("
+	r, _ := v.Dims()
+
+	for i := 0; i < r; i++ {
+		s += fmt.Sprintf("%.2f", v.AtVec(i))
+		if i != r-1 {
+			s += ", "
+		}
+	}
+
+	s += ")"
+	return s
 }
