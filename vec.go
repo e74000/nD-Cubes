@@ -112,6 +112,20 @@ type vec2 struct {
 	y float64
 }
 
+func (v vec2) MulScl(f float64) vec2 {
+	return vec2{
+		x: v.x * f,
+		y: v.y * f,
+	}
+}
+
+func (v vec2) AddVec(w vec2) vec2 {
+	return vec2{
+		x: v.x + w.x,
+		y: v.y + w.y,
+	}
+}
+
 func (v vec2) projectToScreenScale(screen *ebiten.Image, scale float64) vec2 {
 	rx, ry := float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy())
 

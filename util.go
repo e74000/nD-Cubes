@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/bits"
 	"math/rand"
+	"time"
 )
 
 func randUnit(n int, l float64) *mat.VecDense {
@@ -129,4 +130,43 @@ func vecString(v *mat.VecDense) string {
 
 	s += ")"
 	return s
+}
+
+func vecLerp(x float64, a, b vec2) vec2 {
+	return a.MulScl(1 - x).AddVec(b.MulScl(x))
+}
+
+func lerp(x float64, a, b float64) float64 {
+	return a*(1-x) + b*x
+}
+
+func getPerspective(p *mat.VecDense, viewPos *mat.VecDense) vec2 {
+	var p1 = parseProjection(p, viewPos, projectionTarget, scaleTarget)
+
+	if projectionState {
+		var p2 = parseProjection(p, viewPos, projectionStart, scaleStart)
+
+		return vecLerp(time.Since(projectionTime).Seconds()/projectionDuration, p2, p1)
+	} else {
+		return p1
+	}
+}
+
+func parseProjection(p *mat.VecDense, viewPos *mat.VecDense, projection string, scale float64) vec2 {
+	switch projection {
+	case "Isometric":
+		return iso2d(p).MulScl(1 / scale)
+	case "Perspective - Avg":
+		temp := mat.VecDenseCopyOf(p)
+		temp.AddVec(p, viewPos)
+		return avgPersp2d(temp).MulScl(1 / scale)
+	case "Perspective - Trim":
+		temp := mat.VecDenseCopyOf(p)
+		temp.AddVec(p, viewPos)
+		return flatPersp2d(temp).MulScl(1 / scale)
+	case "Orthographic":
+		return flatFlat2d(p).MulScl(1 / scale)
+	}
+
+	return vec2{}
 }
