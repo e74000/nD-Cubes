@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/e74000/wshim"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"gonum.org/v1/gonum/mat"
@@ -13,8 +12,8 @@ import (
 )
 
 var (
-	projectionStart    string
-	projectionTarget   string
+	projectionStart    string = "Isometric"
+	projectionTarget   string = "Isometric"
 	projectionDuration float64
 	projectionTime     time.Time
 	projectionState    bool
@@ -26,13 +25,13 @@ var (
 	distStart   float64
 	distTarget  float64
 
-	dimensions int
+	dimensions int = 3
 
 	dimensionLock bool
 
 	wind *window
 
-	rotationType string
+	rotationType string = "Axis"
 )
 
 type window struct {
@@ -54,6 +53,9 @@ func (w *window) Update() error {
 	if dimensionLock {
 		return nil
 	}
+
+	// Handle key inputs
+	handleInputs(w)
 
 	if projectionState && time.Since(projectionTime).Seconds() > projectionDuration {
 		w.viewPos.SetVec(2, distTarget)
@@ -115,6 +117,9 @@ func (w *window) Draw(screen *ebiten.Image) {
 			}
 		}
 	}
+
+	// Display keybinds information
+	displayKeybinds(screen)
 }
 
 func (w *window) Layout(x, y int) (screenWidth, screenHeight int) {
@@ -137,7 +142,6 @@ func (w *window) init(dim int) {
 
 	dimensions = dim
 
-	projectionStart = projectionTarget
 	switch projectionTarget {
 	case "Isometric":
 		scaleTarget = math.Sqrt2 * math.Sqrt(float64(dimensions))
@@ -163,56 +167,104 @@ func (w *window) init(dim int) {
 }
 
 func main() {
-	dimensions = 3
-
-	wshim.Run(
-		mainFunc,
-		wshim.Radio("Perspective", []string{"Isometric", "Perspective - Avg", "Perspective - Trim", "Orthographic"}, &projectionTarget).
-			OnChange(func(oldVal, newVal string) {
-				projectionStart = oldVal
-				projectionTime = time.Now()
-				projectionState = true
-
-				switch newVal {
-				case "Isometric":
-					fmt.Println("Changing projection to Isometric")
-					scaleStart = scaleTarget
-					scaleTarget = math.Sqrt2 * math.Sqrt(float64(dimensions))
-				case "Perspective - Avg", "Perspective - Trim":
-					fmt.Println("Changing projection to perspective")
-					distStart = distTarget
-					scaleStart = scaleTarget
-					distTarget = 10 + math.Sqrt2*float64(dimensions)
-					scaleTarget = 4 * math.Sqrt2 * math.Sqrt(float64(dimensions)) / distTarget
-				case "Orthographic":
-					fmt.Println("Changing projection to orthographic")
-					scaleStart = scaleTarget
-					scaleTarget = math.Sqrt(float64(dimensions))
-				}
-
-			}),
-		wshim.IntSlider("Dimensions", 3, 9, 1, &dimensions).
-			OnChange(func(oldVal, newVal int) {
-				if oldVal == newVal {
-					return
-				}
-
-				dimensionLock = true
-				dimensions = newVal
-				wind.init(dimensions)
-				dimensionLock = false
-			}),
-		wshim.Radio("Rotation type", []string{"Unit", "Axis"}, &rotationType),
-		wshim.Toggle("Debug View", &debugView),
-	)
-}
-
-func mainFunc() {
 	wind = &window{}
 	wind.init(dimensions)
-
+	
 	if err := ebiten.RunGame(wind); err != nil {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
+}
+
+// Keybind handling
+func handleInputs(w *window) {
+	if ebiten.IsKeyPressed(ebiten.Key1) {
+		changeProjection("Isometric", w)
+	}
+	if ebiten.IsKeyPressed(ebiten.Key2) {
+		changeProjection("Perspective - Avg", w)
+	}
+	if ebiten.IsKeyPressed(ebiten.Key3) {
+		changeProjection("Perspective - Trim", w)
+	}
+	if ebiten.IsKeyPressed(ebiten.Key4) {
+		changeProjection("Orthographic", w)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		changeDimensions(w, dimensions+1)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		changeDimensions(w, dimensions-1)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyR) {
+		toggleRotationType()
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) {
+		toggleDebugView()
+	}
+}
+
+// Change projection type
+func changeProjection(projection string, w *window) {
+	if projectionTarget == projection {
+		return
+	}
+
+	projectionStart = projectionTarget
+	projectionTarget = projection
+	projectionTime = time.Now()
+	projectionState = true
+
+	switch projection {
+	case "Isometric":
+		scaleStart = scaleTarget
+		scaleTarget = math.Sqrt2 * math.Sqrt(float64(dimensions))
+	case "Perspective - Avg", "Perspective - Trim":
+		distStart = distTarget
+		scaleStart = scaleTarget
+		distTarget = 10 + math.Sqrt2*float64(dimensions)
+		scaleTarget = 4 * math.Sqrt2 * math.Sqrt(float64(dimensions)) / distTarget
+	case "Orthographic":
+		scaleStart = scaleTarget
+		scaleTarget = math.Sqrt(float64(dimensions))
+	}
+}
+
+// Change the number of dimensions
+func changeDimensions(w *window, newDim int) {
+	if newDim < 3 || newDim > 9 {
+		return
+	}
+
+	dimensionLock = true
+	dimensions = newDim
+	wind.init(dimensions)
+	dimensionLock = false
+}
+
+// Toggle rotation type between "Axis" and "Unit"
+func toggleRotationType() {
+	if rotationType == "Axis" {
+		rotationType = "Unit"
+	} else {
+		rotationType = "Axis"
+	}
+}
+
+// Toggle debug view
+func toggleDebugView() {
+	debugView = !debugView
+}
+
+// Display the keybinds information
+func displayKeybinds(screen *ebiten.Image) {
+	ebitenutil.DebugPrintAt(screen, "Keybinds:", 10, 10)
+	ebitenutil.DebugPrintAt(screen, "1: Isometric", 10, 30)
+	ebitenutil.DebugPrintAt(screen, "2: Perspective - Avg", 10, 50)
+	ebitenutil.DebugPrintAt(screen, "3: Perspective - Trim", 10, 70)
+	ebitenutil.DebugPrintAt(screen, "4: Orthographic", 10, 90)
+	ebitenutil.DebugPrintAt(screen, "Up Arrow: Increase Dimensions", 10, 110)
+	ebitenutil.DebugPrintAt(screen, "Down Arrow: Decrease Dimensions", 10, 130)
+	ebitenutil.DebugPrintAt(screen, "R: Toggle Rotation Type", 10, 150)
+	ebitenutil.DebugPrintAt(screen, "D: Toggle Debug View", 10, 170)
 }
